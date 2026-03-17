@@ -22,6 +22,7 @@
 ---
 
 ## 🔄 二、 全景数据流转 5 步曲
+```mermaid
 sequenceDiagram
     autonumber
     
@@ -71,6 +72,7 @@ sequenceDiagram
     Note left of FISCO: 状态跨链同步完成，数据落块
     FISCO-->>User: 监听到状态改变，前端展示“验证成功/失败”
     end
+```
 这是系统最核心的生命线，目前 MVP 版本已在物理层面上打通：
 
 ### 阶段一：源头颁发与存证（数据录入）
