@@ -22,7 +22,55 @@
 ---
 
 ## 🔄 二、 全景数据流转 5 步曲
+sequenceDiagram
+    autonumber
+    
+    %% 定义参与角色
+    participant User as 企业/高校 (前端)
+    participant IPFS as IPFS 网络 (存储层)
+    participant Fabric as Fabric (权威存证链)
+    participant Oracle as 跨链预言机 (中继枢纽)
+    participant FISCO as FISCO BCOS (前端业务链)
 
+    %% 阶段一
+    rect rgb(240, 248, 255)
+    Note over User, Fabric: 阶段一：源头颁发与存证
+    User->>IPFS: 上传毕业证书 PDF 等源文件
+    IPFS-->>User: 返回文件唯一特征值 (ipfsHash)
+    User->>Fabric: 调用 pkicert.go -> IssueCertificate(ipfsHash)
+    Note right of Fabric: Fabric 确权，永久写入底层账本
+    end
+
+    %% 阶段二
+    rect rgb(255, 245, 238)
+    Note over User, FISCO: 阶段二：用户发起跨链查验
+    User->>FISCO: 企业验证真伪，调用 CertOracle.sol 传入 ipfsHash
+    FISCO->>FISCO: 检索本地账本 (查无此证)
+    FISCO-->>Oracle: 智能合约抛出 Event: CertVerificationRequested
+    end
+
+    %% 阶段三
+    rect rgb(240, 255, 240)
+    Note over Oracle, FISCO: 阶段三：预言机捕获与路由
+    Oracle->>Oracle: 7x24h 守护进程瞬间捕捉到 FISCO 事件
+    Oracle->>Fabric: 解析 ipfsHash，跨网直连 Fabric gRPC 节点
+    end
+
+    %% 阶段四
+    rect rgb(255, 250, 205)
+    Note over Oracle, Fabric: 阶段四：权威核实（状态研判）
+    Oracle->>Fabric: 调用 QueryCertificate(ipfsHash) 接口
+    Fabric-->>Oracle: 返回证书状态 (IsValid) 与颁发者信誉积分
+    Note right of Oracle: 逻辑研判：<br/>A: 存在 + 有效 + 信誉达标 -> 判定 True<br/>B: 不存在 或 已吊销 -> 判定 False
+    end
+
+    %% 阶段五
+    rect rgb(230, 230, 250)
+    Note over User, Oracle: 阶段五：结果回写与完美闭环
+    Oracle->>FISCO: 预言机私钥签名，调用 verifyCert 强行回写 True/False
+    Note left of FISCO: 状态跨链同步完成，数据落块
+    FISCO-->>User: 监听到状态改变，前端展示“验证成功/失败”
+    end
 这是系统最核心的生命线，目前 MVP 版本已在物理层面上打通：
 
 ### 阶段一：源头颁发与存证（数据录入）
