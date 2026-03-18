@@ -1,0 +1,17 @@
+[Network]
+Type="channel"
+CAFile="conf/ca.crt"
+Cert="conf/sdk.crt"
+Key="conf/sdk.key"
+Enable=true
+ConnectionTimeout=3
+[[Network.Connection]]
+NodeURL="127.0.0.1:20200"
+GroupId=1
+
+[Account]
+KeyFile="conf/account.pem"
+
+[Chain]
+ChainID=1
+SMCrypto=false

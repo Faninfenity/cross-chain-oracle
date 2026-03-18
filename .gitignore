@@ -1,0 +1,14 @@
+# 过滤掉所有证书和私钥（核心安全！）
+**/conf/*.crt
+**/conf/*.key
+**/conf/*.pem
+**/*.bak
+
+# 过滤掉编译产生的二进制程序
+listener/listener
+chainlink-adapter/chainlink-adapter
+
+# 过滤掉 Go 的环境缓存
+vendor/
+.idea/
+.vscode/
