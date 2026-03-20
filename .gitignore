@@ -12,3 +12,4 @@ chainlink-adapter/chainlink-adapter
 vendor/
 .idea/
 .vscode/
+*.log
