@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
-	"os/exec"
+	"strings"
 
+	fiscoAbi "github.com/FISCO-BCOS/go-sdk/abi"
+	fiscoBind "github.com/FISCO-BCOS/go-sdk/abi/bind"
 	"github.com/FISCO-BCOS/go-sdk/client"
 	"github.com/FISCO-BCOS/go-sdk/conf"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,8 +19,11 @@ import (
 	"listener/api"
 )
 
-const contractAddress = "0x77580befe1c74597dfdd626d6cced71807b868d4"
+const contractAddressHex = "0x77580befe1c74597dfdd626d6cced71807b868d4"
 const adapterURL = "http://127.0.0.1:8081/"
+
+// 极简版接口图纸，只包含我们需要打击的目标方法
+const minABI = `[{"constant":false,"inputs":[{"name":"_reqId","type":"bytes32"},{"name":"_isValid","type":"bool"}],"name":"fulfillVerification","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"}]`
 
 type AdapterRequest struct {
 	ID   string `json:"id"`
@@ -35,46 +41,40 @@ type AdapterResponse struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("[Fatal Error] 请提供交易哈希作为启动参数！")
-		os.Exit(1)
+		log.Fatalf("[Fatal Error] 请提供交易哈希作为启动参数！\n")
 	}
-	txHash := os.Args[1]
+	txHashHex := os.Args[1]
 
 	configs, err := conf.ParseConfigFile("config.toml")
 	if err != nil {
-		fmt.Printf("[Fatal Error] 配置加载失败: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("[Fatal Error] 配置加载失败: %v\n", err)
 	}
 
 	c, err := client.Dial(&configs[0])
 	if err != nil {
-		fmt.Printf("[Fatal Error] FISCO连接失败: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("[Fatal Error] FISCO连接失败: %v\n", err)
 	}
 
-	address := common.HexToAddress(contractAddress)
-	filterer, err := api.NewCrossChainClientFilterer(address, nil)
+	contractAddress := common.HexToAddress(contractAddressHex)
+	filterer, err := api.NewCrossChainClientFilterer(contractAddress, nil)
 	if err != nil {
-		fmt.Printf("[Fatal Error] 解析器创建失败: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("[Fatal Error] 解析器创建失败: %v\n", err)
 	}
 
-	fmt.Println("[Listener] 预言机大脑已切换为【主动截获模式】!")
-	fmt.Printf("[Listener] 正在深度解析目标交易: %s\n", txHash)
+	fmt.Println("[Listener] 预言机大脑已切换为主动截获模式")
+	fmt.Printf("[Listener] 正在深度解析目标交易: %s\n", txHashHex)
 
-	receipt, err := c.GetTransactionReceipt(context.Background(), common.HexToHash(txHash))
+	txHash := common.HexToHash(txHashHex)
+	receipt, err := c.GetTransactionReceipt(context.Background(), txHash)
 	if err != nil {
-		fmt.Printf("[Fatal Error] 无法获取交易回执: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("[Fatal Error] 无法获取交易回执: %v\n", err)
 	}
 
 	if len(receipt.Logs) == 0 {
-		fmt.Println("[Fatal Error] 该交易未产生任何事件日志！")
-		os.Exit(1)
+		log.Fatalf("[Fatal Error] 该交易未产生任何事件日志！\n")
 	}
 
 	for _, fiscoLog := range receipt.Logs {
-		// 转换机制：将原始十六进制字符串翻译为标准字节流与哈希
 		ethLog := ethTypes.Log{
 			Data: common.FromHex(fiscoLog.Data),
 		}
@@ -87,25 +87,41 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("\n[Listener] 成功解析出跨链请求! ReqID: %x, Hash: %s\n", event.ReqId, event.CertHash)
-		
+		reqIdHex := fmt.Sprintf("%x", event.ReqId)
+		fmt.Printf("\n[Listener] 成功解析出跨链请求! ReqID: 0x%s, Hash: %s\n", reqIdHex, event.CertHash)
+
 		isValid := callFabricAdapter(event.ReqId, event.CertHash)
 
-		fmt.Println("[Listener] 正在将权威结果写回 FISCO BCOS 账本...")
+		fmt.Println("[Listener] 正在使用 FISCO 原生动态绑定引擎执行跨链存证回写...")
 
-		reqIdHex := fmt.Sprintf("0x%x", event.ReqId)
-		isValidStr := fmt.Sprintf("%t", isValid)
-		cmd := exec.Command("bash", "/home/fan/console/console.sh", "call", "CrossChainClient", contractAddress, "fulfillVerification", reqIdHex, isValidStr)
-
-		out, execErr := cmd.CombinedOutput()
-		if execErr != nil {
-			fmt.Printf("[Listener] 写入失败: %v\n回执: %s\n", execErr, string(out))
-		} else {
-			fmt.Printf("[Listener] 写入成功! 跨链验证结果已永久上链。\n%s\n", string(out))
+		// 1. 动态加载 ABI，完全抛弃静态生成的以太坊绑定代码
+		parsedABI, err := fiscoAbi.JSON(strings.NewReader(minABI))
+		if err != nil {
+			log.Fatalf("[Fatal Error] ABI 解析失败: %v\n", err)
 		}
+
+		// 2. 利用 FISCO 客户端自身的能力，动态绑定目标合约
+		boundContract := fiscoBind.NewBoundContract(contractAddress, parsedABI, c, c, c)
+		auth := c.GetTransactOpts()
+
+		// 3. 终极开火：无需拼接字符串，无需构造 Transaction 结构体，底层自动封包签名！
+		_, txReceipt, err := boundContract.Transact(auth, "fulfillVerification", event.ReqId, isValid)
+		if err != nil {
+			log.Fatalf("[Listener] [Error] 原生回写上链失败: %v\n", err)
+		}
+
+		fmt.Printf("[Listener] [Success] 写入成功! 跨链验证结果已永久上链。\n")
+		fmt.Printf("---------------- 回写存证凭证 ----------------\n")
+		if txReceipt != nil {
+			fmt.Printf("交易哈希: %s\n", txReceipt.TransactionHash)
+			fmt.Printf("所在区块: %v\n", txReceipt.BlockNumber)
+			fmt.Printf("状态码: %v (0x0 表示成功)\n", txReceipt.Status)
+		}
+		fmt.Printf("--------------------------------------------\n")
+
 		return
 	}
-	
+
 	fmt.Println("[Listener] 解析完毕，未在日志中匹配到跨链请求事件。")
 }
 
