@@ -15,9 +15,7 @@ services:
   chainlink:
     image: smartcontract/chainlink:1.13.1
     user: root
-    # 终极绝杀：强行覆盖默认的 chainlink 入口，改为标准 shell
     entrypoint: /bin/sh
-    # 多行命令清晰化：先写密码，再写账号，最后显式调用 chainlink 启动节点
     command: >
       -c 'echo "Fan!CrossChain2026@StrongPassword" > /chainlink/.password &&
       echo "admin@crosschain.local" > /chainlink/.api &&
@@ -33,7 +31,12 @@ services:
       - ALLOW_ORIGINS=*
       - SECURE_COOKIES=false
       - CHAINLINK_TLS_PORT=0
-      - ETH_URL=wss://rpc.ankr.com/eth_sepolia/ws
+      # 核心换源：使用更稳定的公共 WebSocket 节点
+      - ETH_URL=wss://ethereum-sepolia-rpc.publicnode.com
+      - CHAINLINK_DEV=true
+      - DEFAULT_HTTP_ALLOW_UNRESTRICTED_NETWORK_ACCESS=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "6688:6688"
     volumes:
