@@ -18,7 +18,7 @@ import (
 const (
 	// 把旧的 2352c9c6... 换成截图里真实的 2d5857b0...
         ChainlinkWebhookURL = "http://localhost:6688/v2/jobs/2d5857b0-1f73-4a90-a33b-247e749c0c4d/runs" 
-	OracleContractAddr  = "0xb59e0050aC3449D8A9F7A40670ed86DA7D89d5Ac"
+	OracleContractAddr ="0x2d9c4365da3f73f4d9d8a47200b5ebaf5d2c039d"
 	// ⚠️ 极其关键：请确保这里的账号密码，就是你登录 http://localhost:6688 的那个！
 	CL_USER = "admin@crosschain.local"
 	CL_PASS = "Admin@Chainlink2026"
