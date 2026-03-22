@@ -3,96 +3,86 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 )
 
-// Chainlink 节点发来的标准请求体
-type ChainlinkRequest struct {
-	ID   string `json:"id"`
-	Data struct {
-		Hash string `json:"hash"`
-	} `json:"data"`
+const (
+	FabricBase    = "/home/fan/fabric-project/fabric-samples"
+	PeerBin       = FabricBase + "/bin/peer"
+	CfgPath       = FabricBase + "/config"
+	TlsCert       = FabricBase + "/test-network/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+	MspPath       = FabricBase + "/test-network/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp"
+	PeerAddress   = "localhost:7051"
+
+	ChannelName   = "mychannel"
+	ChaincodeName = "pki"         
+	QueryFuncName = "QueryCertificate"   // 真实的 Fabric 查询函数
+	ListenPort    = ":8081"
+)
+
+func queryFabricLedger(targetHash string) (bool, error) {
+	// 把它改成下面这样，把 QueryFuncName 加进去！
+chaincodeArgs := fmt.Sprintf(`{"Args":["%s", "%s"]}`, QueryFuncName, targetHash)
+	
+	cmd := exec.Command(PeerBin, "chaincode", "query",
+		"-C", ChannelName,
+		"-n", ChaincodeName,
+		"-c", chaincodeArgs)
+
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "FABRIC_CFG_PATH="+CfgPath)
+	cmd.Env = append(cmd.Env, "CORE_PEER_TLS_ENABLED=true")
+	cmd.Env = append(cmd.Env, "CORE_PEER_LOCALMSPID=Org1MSP")
+	cmd.Env = append(cmd.Env, "CORE_PEER_TLS_ROOTCERT_FILE="+TlsCert)
+	cmd.Env = append(cmd.Env, "CORE_PEER_MSPCONFIGPATH="+MspPath)
+	cmd.Env = append(cmd.Env, "CORE_PEER_ADDRESS="+PeerAddress)
+
+	fmt.Printf("[Fabric] 正在启动宿主机穿透查询...\n")
+	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+	
+	if err != nil {
+		fmt.Printf("[Fabric] 查无此证或链码报错:\n%s\n", outputStr)
+		return false, nil 
+	}
+
+	fmt.Printf("[Fabric] 💥 底层返回原始数据: %s\n", strings.TrimSpace(outputStr))
+	if strings.Contains(strings.ToLower(outputStr), "error") {
+		return false, nil
+	}
+	return true, nil
 }
 
-// 必须严格遵守的 Chainlink 节点响应体
-type ChainlinkResponse struct {
-	JobRunID   string      `json:"jobRunID"`
-	Data       interface{} `json:"data"`
-	Error      string      `json:"error,omitempty"`
-	StatusCode int         `json:"statusCode"`
+func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
+	var req map[string]interface{}
+	json.NewDecoder(r.Body).Decode(&req)
+	
+	jobID, _ := req["id"].(string)
+	data, _ := req["data"].(map[string]interface{})
+	hash, _ := data["hash"].(string)
+
+	fmt.Printf("\n[Adapter] 收到跨链核查任务! JobID: %s, 目标Hash: %s\n", jobID, hash)
+
+	isValid, _ := queryFabricLedger(hash)
+	statusStr := "无效 (非法伪造)"
+	if isValid { statusStr = "有效 (权威确权)" }
+	fmt.Printf("[Adapter] 最终判决: [%s]\n", statusStr)
+
+	response := map[string]interface{}{
+		"jobRunID": jobID,
+		"data": map[string]interface{}{"isValid": isValid},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+	fmt.Println("[Adapter] 判决结果已成功打回 Chainlink 节点!")
 }
 
 func main() {
-	http.HandleFunc("/", handleRequest)
-	
-	fmt.Println("[Adapter] Chainlink 专属外部适配器已启动，监听端口 8081...")
-	log.Fatal(http.ListenAndServe(":8081", nil))
-}
-
-func handleRequest(w http.ResponseWriter, r *http.Request) {
-	// 1. 读取并解析 Chainlink 发来的数据
-	body, _ := ioutil.ReadAll(r.Body)
-	defer r.Body.Close()
-
-	var req ChainlinkRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		sendError(w, req.ID, "无法解析 Chainlink JSON 请求体: "+err.Error())
-		return
-	}
-
-	fmt.Printf("\n[Adapter] 收到 Chainlink 跨链核查任务! JobID: %s, 目标Hash: %s\n", req.ID, req.Data.Hash)
-
-	// =========================================================================
-	// 2. 这里是调用 Fabric 的核心逻辑
-	// 为了确保当前环境能 100% 跑通，我们先用一个模拟的 Fabric 查证逻辑。
-	// 等 Chainlink 流水线全线贯通后，咱们再把真正的 Fabric SDK 查证代码嵌进这里。
-	// =========================================================================
-	
-	isValid := mockFabricVerify(req.Data.Hash)
-	
-	if isValid {
-		fmt.Printf("[Adapter] Fabric 底层账本研判结果: [有效 - 证书存在]\n")
-	} else {
-		fmt.Printf("[Adapter] Fabric 底层账本研判结果: [无效 - 查无此证]\n")
-	}
-
-	// 3. 按照 Chainlink 的死板要求，组装返回格式
-	resp := ChainlinkResponse{
-		JobRunID: req.ID, // 必须原样返回 JobID
-		Data: map[string]interface{}{
-			"isValid": isValid, // 核心验证结果
-		},
-		StatusCode: 200,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
-	
-	fmt.Printf("[Adapter] 已将权威判决打包完毕，正打回 Chainlink 节点...\n")
-}
-
-// 模拟向 Fabric 发起查询的函数
-func mockFabricVerify(hash string) bool {
-	// 模拟耗时网络请求
-	// time.Sleep(1 * time.Second)
-	
-	// 如果哈希是咱们设定的测试哈希，就返回 true，否则返回 false
-	if hash == "QmTestHash123456789" {
-		return true
-	}
-	return false
-}
-
-func sendError(w http.ResponseWriter, jobID string, errMsg string) {
-	resp := ChainlinkResponse{
-		JobRunID:   jobID,
-		Error:      errMsg,
-		StatusCode: 500,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	json.NewEncoder(w).Encode(resp)
+	http.HandleFunc("/", handleChainlinkRequest)
+	fmt.Printf("[Adapter] 宿主机原生穿透版适配器已启动，监听 %s...\n", ListenPort)
+	log.Fatal(http.ListenAndServe(ListenPort, nil))
 }
