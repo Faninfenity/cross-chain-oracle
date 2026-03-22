@@ -1,57 +1,33 @@
-# 🗺️ 虚拟机全局目录导航图 (Directory Map)
+# 目录结构说明 (Directory Structure)
 
-为了防止在复杂的双链底层环境中迷失，特建立此全局目录索引。本指南标明了所有核心组件在 Ubuntu 虚拟机中的绝对物理路径。
+本项目包含 FISCO BCOS 到 Hyperledger Fabric 跨链预言机的所有核心组件、适配器及自动化脚本。以下是 `cross-chain-oracle` 仓库的全局文件骨架与模块说明：
 
----
+```text
+cross-chain-oracle/
+├── ARCHITECTURE.md        # 系统整体跨链架构设计说明
+├── DIRECTORY.md           # 当前目录结构详细说明
+├── README.md              # 项目实验日志、待办事项与每日开发记录
+├── chainlink-adapter/     # Fabric 外部适配器服务 (运行于宿主机，监听 8081 端口)
+│   ├── adapter.go         # 接收 Chainlink Webhook 请求并对接 Fabric SDK 的核心逻辑
+│   ├── go.mod
+│   └── go.sum
+├── chainlink-node/        # Chainlink 预言机节点部署环境
+│   └── docker-compose.yml # Chainlink 节点与 PostgreSQL 数据库 Docker 启动配置
+├── contracts/             # 跨链预言机通用智能合约目录
+├── fisco-contracts/       # FISCO BCOS 专属跨链智能合约目录 (包含 CrossChainOracle.sol)
+├── listener/              # FISCO BCOS 自动监听与触发中枢
+│   ├── auto_trigger.go    # 轮询监听区块事件，提取 Hash 并自动触发 Chainlink Webhook
+│   ├── config.toml        # FISCO BCOS 节点连接配置
+│   ├── go.mod
+│   └── go.sum
+├── scripts/               # 辅助部署与环境测试脚本目录
+├── fire.sh                # 跨链请求快捷触发测试脚本 (模拟向 FISCO 发送跨链交易)
+├── oracle_main.go         # 预言机主程序入口文件
+├── poweroff_clean.sh      # 关机前的环境清理与进程释放脚本
+├── start_all.sh           # 全局环境 (Listener, Adapter, 节点) 一键启动脚本
+├── start_oracle.sh        # 预言机服务专项启动脚本
+├── startup.sh             # 系统环境初始化配置脚本
+├── stop_all.sh            # 全局跨链进程与容器一键关停脚本
+├── go.mod                 # 根目录 Go 模块依赖声明
+└── go.sum                 # 根目录 Go 模块版本校验
 
-## 📍 1. 跨链预言机大本营 (本项目所在)
-- **路径**: `~/cross-chain-project/`
-- **说明**: 我们的 GitHub 战略基地与 Go 微服务预言机代码所在地。
-- **核心文件**:
-  - `oracle_main.go`：预言机微服务守护程序（核心代码）。
-  - `README.md`：项目说明与排雷血泪史。
-  - `ARCHITECTURE.md`：核心架构与演进路线图。
-  - `DIRECTORY.md`：当前您正在看的目录地图。
-
----
-
-## 📍 2. 源链：Hyperledger Fabric 阵地
-- **网络主路径**: `~/fabric-project/fabric-samples/test-network/`
-- **说明**: 权威存证链的底层网络。每次开机需要在这里执行 `./network.sh up createChannel` 唤醒容器。
-- **关键子目录**:
-  - `organizations/peerOrganizations/org1.example.com/`：Org1 的 MSP 证书和公私钥所在目录（预言机强依赖此目录的证书去签名查证）。
-  - `chaincode/` (或你在部署时指定的路径)：`realcert` (pkicert.go / spbft.go) 智能合约的存放地。
-
----
-
-## 📍 3. 目标链：FISCO BCOS 阵地
-- **节点主路径**: `~/fisco/nodes/127.0.0.1/`
-- **说明**: 业务目标链的底层节点集群。每次开机需在此执行 `bash start_all.sh` 唤醒节点。
-- **控制台路径**: `~/console/`
-- **说明**: Java 交互式控制台，预言机就是通过 `os/exec` 调用这里的 `start.sh` 来实现状态写入的。
-- **关键子目录**:
-  - `~/console/contracts/solidity/`：`CertOracle.sol` 等业务智能合约的存放和编译目录。
-
----
-
-## 📍 4. 极客自动化脚本区
-- **关机清理脚本**: `~/poweroff_clean.sh`
-- **说明**: 强迫症专属的优雅关机脚本，负责拆除 Fabric 容器、超度 FISCO 僵尸进程、并检查 GitHub 是否存盘。强烈建议每次结束战斗时通过此脚本关机。
-
----
-
-## 💡 极客备忘 (Cheat Sheet)
-
-### 🚀 每日点火连招
-```bash
-# 1. 斩断时间刺客
-sudo timedatectl set-ntp no && sudo date -s "$(curl -sI baidu.com | grep -i '^date:' | cut -d' ' -f2-7)" && sudo timedatectl set-ntp yes
-
-# 2. 唤醒 FISCO
-cd ~/fisco/nodes/127.0.0.1/ && bash start_all.sh
-
-# 3. 唤醒 Fabric (如容器已拆除，需重新跑 network.sh up...)
-docker start $(docker ps -aq)
-
-# 4. 启动预言机监听
-cd ~/cross-chain-project && go run oracle_main.go
