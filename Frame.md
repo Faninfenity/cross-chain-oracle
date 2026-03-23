@@ -8,7 +8,7 @@ flowchart TB
     classDef fabric fill:#171717,stroke:#a3e635,stroke-width:2px,color:#fff
     classDef db fill:#991b1b,stroke:#f87171,stroke-width:2px,color:#fff
 
-    subgraph UI ["🖥️ 表现层: Web 可视化大屏"]
+    subgraph UI [" 表现层: Web 可视化大屏"]
         Browser["前端浏览器 (Web UI)"]
         Crypto["Web Crypto API<br/>(纯本地提取 SHA-256)"]
         WebGo["web_ui.go<br/>(总调度后台 Port: 8888)"]
@@ -30,12 +30,12 @@ flowchart TB
         Contract -- "读/写" --> StateDB
     end
 
-    subgraph Middleware ["🚀 跨链中枢: Go 原生守护进程阵列"]
+    subgraph Middleware [" 跨链中枢: Go 原生守护进程阵列"]
         direction TB
         Listener["监听哨兵 (auto_trigger.go)"]
         Writer["回写中枢 (fisco_writer.go | Port: 8082)"]
 
-        subgraph Filter ["🛡️ 核心防御引擎"]
+        subgraph Filter [" 核心防御引擎"]
             LenFilter{"Input Data 长度<br/>> 230 ?"}
             ABIDecoder["ABI Hex 极客解码器<br/>(剥离动态指纹)"]
             AntiLoop(("拦截套娃<br/>(丢弃)"))
@@ -47,7 +47,7 @@ flowchart TB
         LenFilter -- "No (系合法跨链)" --> ABIDecoder
     end
 
-    subgraph Chainlink_Zone ["🔮 路由层: Chainlink 预言机"]
+    subgraph Chainlink_Zone [" 路由层: Chainlink 预言机"]
         Webhook["Webhook Initiator<br/>(API Port: 6688)"]
         Pipeline["TOML 任务流水线<br/>(JSON Parse -> Bridge)"]
         
@@ -55,7 +55,7 @@ flowchart TB
         Webhook --> Pipeline
     end
 
-    subgraph Fabric_Zone ["⛓️ 权威存证链: Hyperledger Fabric"]
+    subgraph Fabric_Zone [" 权威存证链: Hyperledger Fabric"]
         Adapter["宿主机穿透适配器<br/>(adapter.go | Port: 8081)"]
         Peer["Fabric Peer 节点<br/>(localhost:7051)"]
         Chaincode["pki 智能合约<br/>(QueryCertificate)"]
