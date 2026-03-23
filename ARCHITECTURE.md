@@ -100,6 +100,7 @@ sequenceDiagram
 ---
 
 ## 🗺️ 三、 终极演进路线图 (Checklist)
+```mermaid
 sequenceDiagram
     autonumber
     
