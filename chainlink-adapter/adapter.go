@@ -25,8 +25,7 @@ const (
 )
 
 func queryFabricLedger(targetHash string) (bool, error) {
-	// 把它改成下面这样，把 QueryFuncName 加进去！
-chaincodeArgs := fmt.Sprintf(`{"Args":["%s", "%s"]}`, QueryFuncName, targetHash)
+	chaincodeArgs := fmt.Sprintf(`{"Args":["%s", "%s"]}`, QueryFuncName, targetHash)
 	
 	cmd := exec.Command(PeerBin, "chaincode", "query",
 		"-C", ChannelName,
@@ -72,13 +71,18 @@ func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
 	if isValid { statusStr = "有效 (权威确权)" }
 	fmt.Printf("[Adapter] 最终判决: [%s]\n", statusStr)
 
+	// 🎯 修复关键点：把接收到的 hash 原封不动塞进 id 字段里寄回去！
 	response := map[string]interface{}{
 		"jobRunID": jobID,
-		"data": map[string]interface{}{"isValid": isValid},
+		"data": map[string]interface{}{
+			"isValid": isValid,
+			"id":      hash, // 👈 补上这极其关键的一行！
+		},
 	}
+	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-	fmt.Println("[Adapter] 判决结果已成功打回 Chainlink 节点!")
+	fmt.Println("[Adapter] 判决结果及单号已成功打回 Chainlink 节点!")
 }
 
 func main() {
