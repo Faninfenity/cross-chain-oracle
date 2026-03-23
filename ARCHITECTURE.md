@@ -100,7 +100,64 @@ sequenceDiagram
 ---
 
 ## 🗺️ 三、 终极演进路线图 (Checklist)
+sequenceDiagram
+    autonumber
+    
+    %% 定义参与角色
+    participant Web as Web大屏 (全栈前端)
+    participant FISCO as FISCO BCOS (业务侧链)
+    participant Listener as 智能哨兵 (auto_trigger)
+    participant Chainlink as Chainlink (核心预言机)
+    participant Adapter as 穿透适配器 (8081端口)
+    participant Fabric as Fabric (底层权威账本)
+    participant Writer as 回写中枢 (8082端口)
 
+    %% 阶段一
+    rect rgb(240, 248, 255)
+    Note over Web, FISCO: 阶段一：指纹提取与跨链发车
+    Web->>Web: 用户拖拽文件，WebCrypto 瞬间计算 SHA-256 指纹
+    Web->>FISCO: 调用 requestVerification(hash) 发起上链
+    Note right of FISCO: 将动态明文哈希转为底层 ABI Hex 数据
+    FISCO-->>Listener: 账本落块，抛出底层交易事件
+    end
+
+    %% 阶段二
+    rect rgb(255, 245, 238)
+    Note over FISCO, Chainlink: 阶段二：智能拦截与防套娃解析
+    Listener->>Listener: 轮询区块，抓取目标合约的 Input Data
+    Note right of Listener: 🛡️ 核心黑科技：<br/>1. 长度过滤 (防无限死循环套娃)<br/>2. 极客 ABI 解码 (从 Hex 剥离出真指纹)
+    Listener->>Chainlink: 模拟登录获取 Session Cookie
+    Listener->>Chainlink: 触发 Webhook，精准投递跨链任务
+    end
+
+    %% 阶段三
+    rect rgb(240, 255, 240)
+    Note over Chainlink, Fabric: 阶段三：预言机路由与物理穿透
+    Chainlink->>Chainlink: 启动 TOML 流水线 (防崩溃转义处理)
+    Chainlink->>Adapter: 发起 Bridge 请求，转发目标哈希
+    Adapter->>Fabric: 动用宿主机 os/exec 权限，调用 peer query
+    Note right of Adapter: 绕过繁琐 SDK，一针见血直击 Fabric 链码深层状态
+    Fabric-->>Adapter: 返回确权结果 (查无此证/存在有效)
+    Adapter-->>Chainlink: 组装 JSON 结果 (包含 isValid 与原始单号)
+    end
+
+    %% 阶段四
+    rect rgb(255, 250, 205)
+    Note over Chainlink, Writer: 阶段四：跨链回调与防注入护盾
+    Chainlink->>Writer: 携带 Token 将最终判决打向 8082 中枢
+    Writer->>Writer: 校验 Token，组装底层 bash 命令
+    Note right of Writer: 🛡️ 核心黑科技：<br/>参数级严格隔离与双引号拼接，彻底封杀 OS 命令注入漏洞！
+    Writer->>FISCO: 唤醒控制台，调用 fulfillVerification 回写
+    Note left of FISCO: 状态跨链同步完成，不可篡改的铁证落块！
+    end
+
+    %% 阶段五
+    rect rgb(230, 230, 250)
+    Note over Web, FISCO: 阶段五：大满贯查证与完美闭环
+    Web->>FISCO: 用户点击查证，调用 getResult(hash)
+    FISCO-->>Web: 返回真实确权状态 (True/False)
+    Web->>Web: 前端赛博风 UI 渲染：核验通过 / 核验驳回
+    end
 根据最初的项目规划，我们将逐步点亮以下科技树：
 
 - [x] **1) Hyper Fabric 联盟链搭建**
