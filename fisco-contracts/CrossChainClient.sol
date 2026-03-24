@@ -1,24 +1,28 @@
 pragma solidity ^0.4.25;
 
 contract CrossChainClient {
-    // 抛出跨链请求事件，预言机节点会监听这个事件
-    event CertVerificationRequested(bytes32 indexed reqId, string certHash);
-    // 跨链结果回调事件
-    event CertVerified(bytes32 indexed reqId, bool isValid);
+    // 事件全用明文，方便外部监听
+    event CertVerificationRequested(string certHash);
+    event CertVerified(string certHash, bool isValid);
 
-    // 存储跨链验证结果
-    mapping(bytes32 => bool) public verifyResults;
+    // 🛡️ 核心存储（内刚）：只存 bytes32 哈希，极致节省 Gas 费！
+    mapping(bytes32 => bool) private verifyResults;
 
-    // 业务端调用此方法发起验证
-    function requestVerification(string memory _certHash) public returns (bytes32) {
-        bytes32 reqId = keccak256(abi.encodePacked(msg.sender, block.timestamp, _certHash));
-        emit CertVerificationRequested(reqId, _certHash);
-        return reqId;
+    // 发起验证（外柔）：接收明文 string
+    function requestVerification(string memory _certHash) public {
+        emit CertVerificationRequested(_certHash);
     }
 
-    // 预言机获取到 Fabric 结果后，调用此方法将数据写回 FISCO
-    function fulfillVerification(bytes32 _reqId, bool _isValid) public {
-        verifyResults[_reqId] = _isValid;
-        emit CertVerified(_reqId, _isValid);
+    // 回写验证：接收明文 string，在链上内部转哈希！(彻底解决 console 报错)
+    function fulfillVerification(string memory _certHash, bool _isValid) public {
+        bytes32 certId = keccak256(abi.encodePacked(_certHash));
+        verifyResults[certId] = _isValid;
+        emit CertVerified(_certHash, _isValid);
+    }
+
+    // 提供一个友好的明文查询接口
+    function getResult(string memory _certHash) public view returns (bool) {
+        bytes32 certId = keccak256(abi.encodePacked(_certHash));
+        return verifyResults[certId];
     }
 }
