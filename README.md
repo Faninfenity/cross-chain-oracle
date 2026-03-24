@@ -1,55 +1,66 @@
-# Cross-Chain Oracle 实验与开发日志
+# Cross-Chain Oracle: 异构区块链跨链确权预言机系统
 
 **项目名称**: cross-chain-oracle
 **开发者**: Faninfenity
-**核心技术栈**: Go, C++, Solidity, Docker, Hyperledger Fabric, FISCO BCOS, Chainlink
-
-## 1. 系统架构与当前状态 (Context Snapshot)
-本项目旨在实现 FISCO BCOS 与 Hyperledger Fabric 之间的跨链数据核查。当前架构由以下四个核心组件构成：
-
-* **FISCO BCOS (业务发起端)**:
-  * 部署了预言机合约 `CrossChainOracle.sol`。
-  * 当前合约地址: `0xb59e0050aC3449D8A9F7A40670ed86DA7D89d5Ac`。
-* **监听与触发中枢 (Listener - `auto_trigger.go`)**:
-  * 通过 Go SDK 连接 FISCO BCOS 节点。
-  * 轮询监听最新区块，拦截发往预言机合约的 `requestVerify` 事件。
-  * 提取交易 Hash，通过 HTTP POST 自动触发 Chainlink Webhook。
-* **跨链路由中枢 (Chainlink Node)**:
-  * 运行在 Docker 容器中，暴露 6688 端口。
-  * 账号凭证: `admin@crosschain.local` / `Admin@Chainlink2026`。
-  * 核心 Job (Webhook V3): `Fabric-CrossChain-Webhook-V3` (External Job ID: `2352c9c6-0e1c-4b2e-b867-c86cbcb96820`)。
-  * 配置了名为 `fabric-adapter` 的 Bridge。
-* **Fabric 外部适配器 (Adapter - `adapter.go`)**:
-  * 运行在宿主机 8081 端口 (`http://host.docker.internal:8081/`)。
-  * 接收来自 Chainlink Bridge 的核查请求，目前使用 `mockFabricVerify` 模拟返回 `isValid: true` 结果。
-
-## 2. 待办事项 (TODO List)
-* [ ] **高优先级**: 解决 Chainlink Webhook 调用的 401 Basic Auth 认证拦截问题（排查节点数据库凭证缓存或配置读取机制）。
-* [ ] 在 `adapter.go` 中剥离 Mock 逻辑，接入真实的 Fabric Go SDK 账本查询逻辑。
-* [ ] 实现 Chainlink 获取 Fabric 结果后，调用 FISCO BCOS 智能合约的回写机制（将 `isValid` 状态上链）。
-* [ ] 将配置文件中的明文账密和私钥剥离，完善 `.gitignore` 配置。
+**核心技术栈**: Go, C++, Solidity, Docker, Hyperledger Fabric, FISCO BCOS, Chainlink, IPFS
 
 ---
 
-## 3. 实验日志 (Daily Log)
+## 1. 项目背景与设计理念 (Project Background)
 
-### [2026-03-22] 自动监听中枢开发与全链路联调攻坚
+在多链并存的联盟链生态中，数据孤岛问题日益凸显。传统的单链存证系统无法满足跨域信任传递的需求。本项目提出并实现了一种跨异构区块链（Hyperledger Fabric 与 FISCO BCOS）的分布式确权与核验架构。
 
-**核心进展**:
-1. **外部适配器 (Adapter) 连通测试**: 成功在 8081 端口启动 `adapter.go`。通过 Chainlink Web UI 手动触发 Webhook，成功穿透 Docker 网络，终端打印 `[Adapter] 收到 Chainlink 跨链核查任务!`。确认 Chainlink 前端 `Failed to parse task graph` 为纯 UI 渲染 Bug，不影响底层逻辑。
-2. **监听器 (Listener) 开发**: 编写了 `auto_trigger.go`，实现了对 FISCO BCOS 区块的 7x24 小时轮询监听。
-3. **数据解析修复**: 在处理 FISCO Go SDK 返回的 `Block` 对象时，解决了 `tx.Hash` 字段无法直接读取的问题，通过类型断言 `tx, ok := txInterface.(map[string]interface{})` 成功提取出交易 Hash。
-4. **代码版本控制**: 将 `chainlink-adapter` 和 `listener` 模块的代码统一汇总，解决了 Git 暂存区冲突 (`fetch first` 与 `rebase` 问题)，成功推送到远程 `cross-chain-oracle` 仓库的主分支。
+系统以 IPFS（星际文件系统）作为去中心化底层存储，以 Hyperledger Fabric 作为高隐私、强管控的源头确权账本，以 FISCO BCOS 作为面向公众的快速核验侧链。通过引入 Chainlink 去中心化预言机集群，实现了异构账本间的状态安全监听、数据物理穿透与异步确权回写，彻底打通了跨链信任闭环。
 
-**技术卡点 (Blocker)**:
-* **Webhook 认证穿透失败**: `auto_trigger.go` 在向 Chainlink 发送自动化触发指令时，遭遇 `401 Unauthorized`。
-* 尝试在 Go 代码中注入 `req.SetBasicAuth(CL_USER, CL_PASS)`，并使用 `curl -u` 命令行进行裸测，均被拒绝。
-* 疑似 Chainlink 节点在首次启动后，将初始凭证固化在 PostgreSQL 数据库卷中，导致外部 API 调用时出现鉴权信息不同步。后续需考虑执行 `docker-compose down -v` 清理数据卷并重建 Job。
+## 2. 系统核心架构与微服务矩阵 (Core Architecture)
 
-### [2026-03-13 至 2026-03-20] 跨链基础设施搭建与合约部署
+本系统的跨链交互并非简单的接口调用，而是基于区块链状态机的物理级握手，由以下核心组件构成：
 
-**核心进展**:
-1. 确立了跨链工程的基本拓扑结构，初始化 GitHub 仓库 `git@github.com:Faninfenity/cross-chain-oracle.git`。
-2. 梳理了 Hyperledger Fabric, FISCO BCOS, 以及 Chainlink 预言机之间的交互边界。
-3. 编写了 FISCO BCOS 端的智能合约接口，并完成了初步的编译与部署验证。
-4. 部署并启动了 Chainlink 节点容器环境。
+| 微服务组件 | 进程 / 端口 | 核心职责与工程描述 |
+| :--- | :--- | :--- |
+| **源头存证大屏** | `issuer_ui` (:8889) | 负责文件哈希提取，并将数字资产指纹双写至 IPFS 与 Fabric 源头账本。 |
+| **跨链查证大屏** | `verifier_ui` (:8888) | 提供核验入口，向 FISCO BCOS 抛出核验事件并轮询最终回写状态。 |
+| **底层嗅探中枢** | `auto_trigger` (后台) | 基于 Go SDK 深度定制。直接嗅探区块事件，防死循环拦截，具备 ABI 动态解码能力。 |
+| **预言机调度网关** | `Chainlink Node` (:6688) | 接收 Webhook 触发，通过有向无环图 (DAG) 工作流调度外部适配器集群。 |
+| **Fabric 适配器** | `fabric_adapter` (:8081) | 作为 External Adapter，调用 Go Gateway 穿透 Fabric 网关提取真实状态。 |
+| **FISCO 回写中枢** | `fisco_writer` (:8082) | 将穿透提取的数据重新 ABI 编码，签名发送至 FISCO BCOS，完成状态机闭环。 |
+
+## 3. 跨链生命周期数据流转 (Data Flow)
+
+1. [用户] 在 Verifier UI 上传需核验的文件。
+2. [Verifier] 计算文件哈希，调用 FISCO BCOS 智能合约抛出 `CertVerificationRequested` 事件。
+3. [Listener] 嗅探中枢拦截交易，提取 Hex Input 数据，动态反编译出真实的 IPFS CID。
+4. [Listener] 通过认证 Webhook 将 CID 注入 Chainlink 节点的工作流 (Job Run)。
+5. [Chainlink] 调度 Fabric Adapter，将 CID 发送至 8081 端口。
+6. [Adapter] 载入证书连接 Peer 节点，执行链码查询，返回布尔值确权结果。
+7. [Chainlink] 接收真实结果，触发 FISCO Writer 任务 (8082 端口)。
+8. [Writer] 构建回写交易，调用智能合约 `fulfillVerification` 物理落块。
+9. [Verifier] 大屏轮询检测到账本状态变更，向前端反馈最终核验结果。
+
+## 4. 核心技术攻坚与工程亮点 (Technical Highlights)
+
+* **EVM ABI 跨 Word 边界的动态自适应解析**: 在以太坊虚拟机底层，数据严格按 32 字节对齐。针对 46 字节长度的 IPFS CID，本系统重构了底层 Hex 解析引擎，通过提取偏移量与长度位，实现了对跨越 Word 边界的超长字符串精准剥离，确保跨链通信数据绝对保真。
+* **异构网络协议栈平滑桥接**: 创新性引入双向外置适配器架构，将 Fabric 的 gRPC/Protobuf 与 FISCO BCOS 的 JSON-RPC 复杂交互下沉至独立的 Go 微服务，确保 Chainlink 核心节点的高可用性。
+* **工业级进程生命周期管理**: 摈弃脆弱的开发级拉起，设计了基于 Bash 的全自动编译与 PID 追踪启停脚本，实现了跨链微服务集群的精准守护与平滑退出 (Graceful Shutdown)。
+
+## 5. 极客部署指南 (Deployment)
+
+本项目自带工程级防僵尸启停序列，确保多节点环境下的自动化流转。
+
+**一键点火序列 (全量预编译与后台拉起):**
+```bash
+chmod +x start_all.sh
+./start_all.sh
+
+##6. 演进路线图 (Roadmap)
+[x] 高优先级: 解决 Chainlink Webhook 调用的 401 Basic Auth 认证拦截问题。
+
+[x] 高优先级: 在 adapter.go 中剥离 Mock 逻辑，接入真实的 Fabric Go SDK 账本查询逻辑。
+
+[x] 高优先级: 实现 Chainlink 获取 Fabric 真实结果后，调用 FISCO BCOS 合约的物理回写机制。
+
+[ ] 提取全网硬编码，重构为基于 Viper 的统一 YAML 配置中心。
+
+[ ] 将各 Golang 微服务节点进行 Alpine 轻量级 Docker 化打包。
+
+[ ] 在适配器调用层加入指数退避重试 (Exponential Backoff) 机制，提升应对网络抖动的容灾能力。
