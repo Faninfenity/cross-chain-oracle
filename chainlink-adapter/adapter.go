@@ -20,11 +20,12 @@ const (
 
 	ChannelName   = "mychannel"
 	ChaincodeName = "pki"         
-	QueryFuncName = "QueryCertificate"   // 真实的 Fabric 查询函数
+	QueryFuncName = "ReadAsset"   // 🎯 [核心修复] 修正为真实的 Fabric 官方基础合约查询函数
 	ListenPort    = ":8081"
 )
 
 func queryFabricLedger(targetHash string) (bool, error) {
+	// 构造参数：["ReadAsset", "Qm..."]
 	chaincodeArgs := fmt.Sprintf(`{"Args":["%s", "%s"]}`, QueryFuncName, targetHash)
 	
 	cmd := exec.Command(PeerBin, "chaincode", "query",
@@ -50,9 +51,10 @@ func queryFabricLedger(targetHash string) (bool, error) {
 	}
 
 	fmt.Printf("[Fabric] 💥 底层返回原始数据: %s\n", strings.TrimSpace(outputStr))
-	if strings.Contains(strings.ToLower(outputStr), "error") {
+	if strings.Contains(strings.ToLower(outputStr), "error") || outputStr == "" {
 		return false, nil
 	}
+	// 只要拿到了真实的 JSON 数据且没报错，就说明确权成功
 	return true, nil
 }
 
@@ -71,12 +73,12 @@ func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
 	if isValid { statusStr = "有效 (权威确权)" }
 	fmt.Printf("[Adapter] 最终判决: [%s]\n", statusStr)
 
-	// 🎯 修复关键点：把接收到的 hash 原封不动塞进 id 字段里寄回去！
+	// 打回给 Chainlink 的标准载荷
 	response := map[string]interface{}{
 		"jobRunID": jobID,
 		"data": map[string]interface{}{
 			"isValid": isValid,
-			"id":      hash, // 👈 补上这极其关键的一行！
+			"id":      hash, 
 		},
 	}
 	

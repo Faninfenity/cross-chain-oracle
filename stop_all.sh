@@ -5,13 +5,28 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${YELLOW}=== [Cross-Chain Oracle] 极客优雅关机序列 v2.1 ===${NC}"
+echo -e "${YELLOW}=== [Cross-Chain Oracle] 极客优雅关机序列 v4.0 ===${NC}"
 
-# 1. 斩断预言机微服务 (原生 Go 进程)
-echo -e "${YELLOW}[1/5] 正在超度预言机后台进程...${NC}"
-pkill -f "adapter.go" 2>/dev/null
-pkill -f "main.go" 2>/dev/null
-echo -e "${GREEN}预言机中间件已安全清理。${NC}"
+PROJECT_DIR=$(cd "$(dirname "$0")"; pwd)
+LOG_DIR="$PROJECT_DIR/logs"
+
+# 1. 斩断跨链微服务集群 (新增 issuer_ui)
+echo -e "${YELLOW}[1/5] 正在超度跨链微服务群...${NC}"
+SERVICES=("issuer_ui" "verifier_ui" "auto_trigger" "fisco_writer" "fabric_adapter")
+for service in "${SERVICES[@]}"; do
+    pid_file="$LOG_DIR/${service}.pid"
+    if [ -f "$pid_file" ]; then
+        pid=$(cat "$pid_file")
+        if ps -p $pid > /dev/null; then
+            kill $pid
+            echo "  -> $service (PID: $pid) 已被安全终止。"
+        fi
+        rm -f "$pid_file"
+    else
+        pkill -f "$service" 2>/dev/null
+    fi
+done
+echo -e "${GREEN}跨链中间件集群已安全清理。${NC}"
 
 # 2. 优雅停止 FISCO BCOS
 echo -e "${YELLOW}[2/5] 正在安全挂起 FISCO BCOS 节点...${NC}"
@@ -26,7 +41,6 @@ fi
 echo -e "${YELLOW}[3/5] 正在指挥 Chainlink 舰队降落...${NC}"
 if [ -d "$HOME/cross-chain-project/chainlink-node" ]; then
     cd $HOME/cross-chain-project/chainlink-node
-    # 使用 stop 而非 down，保留容器状态，下次启动快
     docker-compose stop > /dev/null 2>&1
     echo -e "${GREEN}Chainlink 节点与 Postgres 数据库已优雅挂起。${NC}"
 else

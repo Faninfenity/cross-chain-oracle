@@ -15,8 +15,12 @@ const ConsolePath = "/home/fan/console"
 const ContractAddr = "0xe8dfaab25d58ae0c41e16cb679737ac3c8f5dc05"
 
 func executeConsoleCmd(method, arg string) (string, error) {
+	// 组装命令
 	cmd := exec.Command("bash", "console.sh", "call", "CrossChainClient", ContractAddr, method, fmt.Sprintf("\"%s\"", arg))
-	cmd.Dir = ConsolePath
+	// 强制重定向到真正的控制台目录
+	cmd.Dir = "/home/fan/console"
+	
+	// 只执行一次！并把最干净的结果直接返回给前端
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
