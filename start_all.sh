@@ -85,21 +85,26 @@ echo -e "${GREEN}核心微服务编译完毕，准备入列。${NC}"
 
 # 7. 点火全套微服务后台
 echo -e "${YELLOW}[7/7] 正在后台启动全套跨链微服务...${NC}"
-cd "$PROJECT_DIR"
 
 start_service() {
     local name=$1
     local cmd=$2
+    local run_dir=$3
+    
+    # 核心修复：强制切换到该微服务专属的工作目录再启动
+    cd "$run_dir" || { echo -e "${RED}[错误] 无法进入工作目录 $run_dir${NC}"; exit 1; }
+    
     nohup $cmd > "$LOG_DIR/${name}.log" 2>&1 &
     echo $! > "$LOG_DIR/${name}.pid"
     echo "  -> $name 已启动 (PID: $(cat "$LOG_DIR/${name}.pid"))"
 }
 
-start_service "fabric_adapter" "$BIN_DIR/fabric_adapter"
-start_service "fisco_writer" "$BIN_DIR/fisco_writer"
-start_service "auto_trigger" "$BIN_DIR/auto_trigger"
-start_service "issuer_ui" "$BIN_DIR/issuer_ui"
-start_service "verifier_ui" "$BIN_DIR/verifier_ui"
+# 必须指明每个微服务的原生工作目录，确保它们能找到自己的 config.toml / connection.yaml
+start_service "fabric_adapter" "$BIN_DIR/fabric_adapter" "$PROJECT_DIR/chainlink-adapter"
+start_service "fisco_writer" "$BIN_DIR/fisco_writer" "$PROJECT_DIR/listener"
+start_service "auto_trigger" "$BIN_DIR/auto_trigger" "$PROJECT_DIR/listener"
+start_service "issuer_ui" "$BIN_DIR/issuer_ui" "$PROJECT_DIR"
+start_service "verifier_ui" "$BIN_DIR/verifier_ui" "$PROJECT_DIR"
 
 echo "----------------------------------------------------------------------"
 echo -e "${GREEN}全链路底层服务 (包含 IPFS) 已全部就位！系统处于实战待命状态。${NC}"
