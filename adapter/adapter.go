@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -50,7 +49,7 @@ func queryFabricLedger(targetHash string) (bool, error) {
 		return false, nil 
 	}
 
-	fmt.Printf("[Fabric] 底层返回原始数据: %s\n", strings.TrimSpace(outputStr))
+	fmt.Printf("[Fabric] 💥 底层返回原始数据: %s\n", strings.TrimSpace(outputStr))
 	if strings.Contains(strings.ToLower(outputStr), "error") || outputStr == "" {
 		return false, nil
 	}
@@ -58,26 +57,31 @@ func queryFabricLedger(targetHash string) (bool, error) {
 }
 
 func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, _ := io.ReadAll(r.Body)
-	fmt.Printf("\n[X-Ray] 收到直通载荷: %s\n", string(bodyBytes))
-
 	var req map[string]interface{}
-	json.Unmarshal(bodyBytes, &req)
+	json.NewDecoder(r.Body).Decode(&req)
 	
-	hash, _ := req["certHash"].(string)
-	reqId, _ := req["reqId"].(string)
+	jobID, _ := req["id"].(string)
+	
+	// 🎯 完美对接 auto_trigger 发来的载荷
+	dataObj, _ := req["data"].(map[string]interface{})
+	hash, _ := dataObj["certHash"].(string)
+	reqId, _ := dataObj["reqId"].(string)
 
-	fmt.Printf("[Adapter] 核心参数提取完毕! 目标指纹: %s\n", hash)
+	fmt.Printf("\n[Adapter] 收到跨链核查任务! JobID: %s, 目标指纹: %s\n", jobID, hash)
 
 	isValid, _ := queryFabricLedger(hash)
 	statusStr := "无效 (非法伪造)"
 	if isValid { statusStr = "有效 (权威确权)" }
 	fmt.Printf("[Adapter] 最终判决: [%s]\n", statusStr)
 
+	// 🎯 完美对接 fisco_writer 期望的回写格式
 	response := map[string]interface{}{
-		"reqId":        reqId,
-		"isAuthorized": isValid,
-		"responseHash": "Fabric-Status-" + fmt.Sprintf("%v", isValid), 
+		"jobRunID": jobID,
+		"data": map[string]interface{}{
+			"reqId":        reqId,
+			"isAuthorized": isValid,
+			"responseHash": "Fabric-Status-" + fmt.Sprintf("%v", isValid), 
+		},
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -87,6 +91,6 @@ func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/", handleChainlinkRequest)
-	fmt.Printf("[Adapter] 宿主机原生穿透直通版适配器已启动，监听 %s...\n", ListenPort)
+	fmt.Printf("[Adapter] 宿主机原生穿透版适配器已启动，监听 %s...\n", ListenPort)
 	log.Fatal(http.ListenAndServe(ListenPort, nil))
 }
