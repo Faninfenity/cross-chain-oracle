@@ -1,4 +1,4 @@
-````mermaid`
+````mermaid
 graph TD
     %% 定义样式，保持与原图色彩对齐
     classDef UserFill fill:#F0F8FF,stroke:#333,stroke-width:1px,color:black;
@@ -125,4 +125,4 @@ graph TD
         Stage3 ==> Stage4
         Stage4 ==> Stage5
     end
-`````
+````
