@@ -72,8 +72,8 @@ fi
 # 6. 预编译跨链核心微服务
 echo -e "${YELLOW}[6/7] 正在预编译跨链五大核心微服务...${NC}"
 cd "$PROJECT_DIR"
-go build -o "$BIN_DIR/issuer_ui" issuer_ui.go || { echo -e "${RED}源头存证大屏编译失败${NC}"; exit 1; }
-go build -o "$BIN_DIR/verifier_ui" verifier_ui.go || { echo -e "${RED}查证大屏编译失败${NC}"; exit 1; }
+go build -o "$BIN_DIR/issuer_ui" issuer_ui.go config.go || { echo -e "${RED}源头存证大屏编译失败${NC}"; exit 1; }
+go build -o "$BIN_DIR/verifier_ui" verifier_ui.go config.go || { echo -e "${RED}查证大屏编译失败${NC}"; exit 1; }
 
 cd "$PROJECT_DIR/chainlink-adapter"
 go build -o "$BIN_DIR/fabric_adapter" adapter.go config.go || { echo -e "${RED}Fabric适配器编译失败${NC}"; exit 1; }
