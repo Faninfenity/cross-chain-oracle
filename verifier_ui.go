@@ -119,10 +119,6 @@ func triggerVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.Contains(outCmd, "transaction executed successfully") {
-		// 触发事件总线
-		payload := fmt.Sprintf(`{"reqId":"%s","fingerprint":"%s"}`, cid, cid)
-		http.Post("http://localhost"+Cfg.Ports.AutoTrigger+"/event",
-			"application/json", strings.NewReader(payload))
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"OK","log":%s}`, jsonStr(outCmd))
 		return
