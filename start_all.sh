@@ -1,114 +1,130 @@
 #!/bin/bash
+# start_all.sh - Cross-Chain Oracle 系统启动脚本
 
 GREEN='\033[0;32m'
+BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+GRAY='\033[0;90m'
 NC='\033[0m'
 
-echo -e "${YELLOW}=== [Cross-Chain Oracle] 极客全境终极点火序列 v6.0 ===${NC}"
-
-# 0. 环境变量与目录准备
 PROJECT_DIR=$(cd "$(dirname "$0")"; pwd)
 BIN_DIR="$PROJECT_DIR/bin"
 LOG_DIR="$PROJECT_DIR/logs"
 mkdir -p "$BIN_DIR" "$LOG_DIR"
 
-# 1. 斩断时间刺客
-echo -e "${YELLOW}[1/7] 正在同步系统时间...${NC}"
-sudo timedatectl set-ntp no && sudo date -s "$(curl -sI baidu.com | grep -i '^date:' | cut -d' ' -f2-7)" && sudo timedatectl set-ntp yes
-echo -e "${GREEN}时间同步完成！${NC}"
+step() { echo -e "\n${BLUE}▶ $1${NC}"; }
+ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
+warn() { echo -e "  ${YELLOW}!${NC} $1"; }
+fail() { echo -e "  ${RED}✗${NC} $1"; }
+info() { echo -e "  ${GRAY}·${NC} $1"; }
 
-# 2. 唤醒 IPFS 星际文件系统
-echo -e "${YELLOW}[2/7] 正在唤醒 IPFS 去中心化存储节点...${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}  Cross-Chain Oracle  ·  系统启动${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# ── 1. 时间同步 ────────────────────────────────────────────
+step "同步系统时间"
+sudo timedatectl set-ntp no && \
+sudo date -s "$(curl -sI baidu.com | grep -i '^date:' | cut -d' ' -f2-7)" > /dev/null 2>&1 && \
+sudo timedatectl set-ntp yes
+ok "$(date '+%Y-%m-%d %H:%M:%S CST')"
+
+# ── 2. IPFS ────────────────────────────────────────────────
+step "IPFS 去中心化存储"
 if pgrep -x "ipfs" > /dev/null; then
-    echo -e "${GREEN}IPFS 节点已在运行中。${NC}"
+    ok "IPFS 已在运行 (port 5001)"
 else
     nohup ipfs daemon > "$LOG_DIR/ipfs.log" 2>&1 &
-    # 给 IPFS 几秒钟的初始化时间
-    sleep 3 
+    sleep 3
     if pgrep -x "ipfs" > /dev/null; then
-        echo -e "${GREEN}IPFS 守护进程已成功拉起 (API: 5001)。${NC}"
+        ok "IPFS 节点已启动 (port 5001)"
     else
-        echo -e "${RED}[错误] IPFS 启动失败，请检查是否已执行 ipfs init。${NC}"
+        fail "IPFS 启动失败，请检查 ipfs init 是否已执行"
         exit 1
     fi
 fi
 
-# 3. 唤醒 FISCO BCOS
-echo -e "${YELLOW}[3/7] 正在唤醒 FISCO BCOS 底层节点...${NC}"
+# ── 3. FISCO BCOS ──────────────────────────────────────────
+step "FISCO BCOS 区块链节点"
 if [ -d "$HOME/fisco/nodes/127.0.0.1" ]; then
-    cd $HOME/fisco/nodes/127.0.0.1/ && bash start_all.sh
-    echo -e "${GREEN}FISCO BCOS 节点已启动！${NC}"
+    cd $HOME/fisco/nodes/127.0.0.1/ && bash start_all.sh > /dev/null 2>&1
+    ok "FISCO BCOS 节点已启动 (4 节点)"
 else
-    echo -e "${RED}[错误] 未找到 FISCO 节点路径。${NC}"
+    fail "未找到 FISCO 节点路径: ~/fisco/nodes/127.0.0.1"
 fi
 
-# 4. 唤醒 Fabric 与智能合约
-echo -e "${YELLOW}[4/7] 正在处理 Hyperledger Fabric 网络...${NC}"
+# ── 4. Hyperledger Fabric ──────────────────────────────────
+step "Hyperledger Fabric 网络"
 cd $HOME/fabric-project/fabric-samples/test-network/
 FABRIC_CONTAINERS=$(docker ps -a -q --filter "name=peer" --filter "name=orderer" --filter "name=couchdb" --filter "name=cli")
 if [ -n "$FABRIC_CONTAINERS" ]; then
-    echo "检测到存量 Fabric 容器，正在直接唤醒底层网络..."
-    docker start $FABRIC_CONTAINERS > /dev/null
-    echo -e "${GREEN}Fabric 容器唤醒完毕！${NC}"
+    docker start $FABRIC_CONTAINERS > /dev/null 2>&1
+    ok "Fabric 容器已唤醒 (channel: mychannel, chaincode: pki)"
 else
-    echo "未检测到容器，执行深度冷启动..."
-    ./network.sh up createChannel -c mychannel -s couchdb
-    echo "正在将 real-pkicert 智能合约自动部署上链..."
-    ./network.sh deployCC -ccn pki -ccp ../real-pkicert -ccl go
-    echo -e "${GREEN}Fabric 网络与智能合约冷部署完毕！${NC}"
+    warn "未检测到容器，执行冷启动..."
+    ./network.sh up createChannel -c mychannel -s couchdb > /dev/null 2>&1
+    ./network.sh deployCC -ccn pki -ccp ../real-pkicert -ccl go > /dev/null 2>&1
+    ok "Fabric 网络冷启动完成"
 fi
 
-# 5. 唤醒 Chainlink 去中心化预言机节点
-echo -e "${YELLOW}[5/7] 正在启动 Chainlink 预言机舰队...${NC}"
+# ── 5. Chainlink ───────────────────────────────────────────
+step "Chainlink 预言机节点"
 if [ -d "$HOME/cross-chain-project/chainlink-node" ]; then
     cd $HOME/cross-chain-project/chainlink-node
     docker-compose start > /dev/null 2>&1
-    echo -e "${GREEN}Chainlink 节点与 Postgres 数据库已上线！${NC}"
+    ok "Chainlink 节点与 PostgreSQL 已上线 (port 6688)"
 else
-    echo -e "${RED}[错误] 未发现 Chainlink 阵地目录。${NC}"
+    fail "未找到 Chainlink 目录"
 fi
 
-# 6. 预编译跨链核心微服务
-echo -e "${YELLOW}[6/7] 正在预编译跨链五大核心微服务...${NC}"
-cd "$PROJECT_DIR"
-go build -o "$BIN_DIR/issuer_ui" issuer_ui.go config.go || { echo -e "${RED}源头存证大屏编译失败${NC}"; exit 1; }
-go build -o "$BIN_DIR/verifier_ui" verifier_ui.go config.go || { echo -e "${RED}查证大屏编译失败${NC}"; exit 1; }
+# ── 6. 编译微服务 ──────────────────────────────────────────
+step "编译跨链微服务"
 
-cd "$PROJECT_DIR/chainlink-adapter"
-go build -o "$BIN_DIR/fabric_adapter" adapter.go config.go || { echo -e "${RED}Fabric适配器编译失败${NC}"; exit 1; }
+compile() {
+    local name=$1
+    local dir=$2
+    local files=$3
+    cd "$dir"
+    if go build -o "$BIN_DIR/$name" $files 2>/dev/null; then
+        ok "$name"
+    else
+        fail "$name 编译失败"
+        go build -o "$BIN_DIR/$name" $files
+        exit 1
+    fi
+}
 
-cd "$PROJECT_DIR/listener"
-go build -o "$BIN_DIR/auto_trigger" auto_trigger.go config.go || { echo -e "${RED}传达室编译失败${NC}"; exit 1; }
-go build -o "$BIN_DIR/fisco_writer" fisco_writer.go config.go || { echo -e "${RED}回写中枢编译失败${NC}"; exit 1; }
-echo -e "${GREEN}核心微服务编译完毕，准备入列。${NC}"
+compile "issuer_ui"      "$PROJECT_DIR"                  "issuer_ui.go config.go"
+compile "verifier_ui"    "$PROJECT_DIR"                  "verifier_ui.go config.go"
+compile "fabric_adapter" "$PROJECT_DIR/chainlink-adapter" "adapter.go config.go"
+compile "auto_trigger"   "$PROJECT_DIR/listener"          "auto_trigger.go config.go"
+compile "fisco_writer"   "$PROJECT_DIR/listener"          "fisco_writer.go config.go"
 
-# 7. 点火全套微服务后台
-echo -e "${YELLOW}[7/7] 正在后台启动全套跨链微服务...${NC}"
+# ── 7. 启动微服务 ──────────────────────────────────────────
+step "启动跨链微服务"
 
 start_service() {
     local name=$1
-    local cmd=$2
-    local run_dir=$3
-    
-    # 核心修复：强制切换到该微服务专属的工作目录再启动
-    cd "$run_dir" || { echo -e "${RED}[错误] 无法进入工作目录 $run_dir${NC}"; exit 1; }
-    
-    nohup $cmd > "$LOG_DIR/${name}.log" 2>&1 &
+    local run_dir=$2
+    cd "$run_dir"
+    nohup "$BIN_DIR/$name" > "$LOG_DIR/${name}.log" 2>&1 &
     echo $! > "$LOG_DIR/${name}.pid"
-    echo "  -> $name 已启动 (PID: $(cat "$LOG_DIR/${name}.pid"))"
+    ok "$name  (PID: $(cat "$LOG_DIR/${name}.pid"))"
 }
 
-# 必须指明每个微服务的原生工作目录，确保它们能找到自己的 config.toml / connection.yaml
-start_service "fabric_adapter" "$BIN_DIR/fabric_adapter" "$PROJECT_DIR/chainlink-adapter"
-start_service "fisco_writer" "$BIN_DIR/fisco_writer" "$PROJECT_DIR/listener"
-start_service "auto_trigger" "$BIN_DIR/auto_trigger" "$PROJECT_DIR/listener"
-start_service "issuer_ui" "$BIN_DIR/issuer_ui" "$PROJECT_DIR"
-start_service "verifier_ui" "$BIN_DIR/verifier_ui" "$PROJECT_DIR"
+start_service "fabric_adapter" "$PROJECT_DIR/chainlink-adapter"
+start_service "fisco_writer"   "$PROJECT_DIR/listener"
+start_service "auto_trigger"   "$PROJECT_DIR/listener"
+start_service "issuer_ui"      "$PROJECT_DIR"
+start_service "verifier_ui"    "$PROJECT_DIR"
 
-echo "----------------------------------------------------------------------"
-echo -e "${GREEN}全链路底层服务 (包含 IPFS) 已全部就位！系统处于实战待命状态。${NC}"
-echo -e "${YELLOW}源头存证入口: http://localhost:8889${NC}"
-echo -e "${YELLOW}跨链查证入口: http://localhost:8888${NC}"
-echo -e "${YELLOW}预言机控制台: http://localhost:6688${NC}"
-echo "----------------------------------------------------------------------"
+# ── 完成 ───────────────────────────────────────────────────
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  系统已就绪${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  ${GRAY}存证系统${NC}    http://localhost:8889"
+echo -e "  ${GRAY}核验系统${NC}    http://localhost:8888"
+echo -e "  ${GRAY}预言机${NC}      http://localhost:6688"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
