@@ -76,11 +76,11 @@ go build -o "$BIN_DIR/issuer_ui" issuer_ui.go || { echo -e "${RED}源头存证�
 go build -o "$BIN_DIR/verifier_ui" verifier_ui.go || { echo -e "${RED}查证大屏编译失败${NC}"; exit 1; }
 
 cd "$PROJECT_DIR/chainlink-adapter"
-go build -o "$BIN_DIR/fabric_adapter" adapter.go || { echo -e "${RED}Fabric适配器编译失败${NC}"; exit 1; }
+go build -o "$BIN_DIR/fabric_adapter" adapter.go config.go || { echo -e "${RED}Fabric适配器编译失败${NC}"; exit 1; }
 
 cd "$PROJECT_DIR/listener"
-go build -o "$BIN_DIR/auto_trigger" auto_trigger.go || { echo -e "${RED}传达室编译失败${NC}"; exit 1; }
-go build -o "$BIN_DIR/fisco_writer" fisco_writer.go || { echo -e "${RED}回写中枢编译失败${NC}"; exit 1; }
+go build -o "$BIN_DIR/auto_trigger" auto_trigger.go config.go || { echo -e "${RED}传达室编译失败${NC}"; exit 1; }
+go build -o "$BIN_DIR/fisco_writer" fisco_writer.go config.go || { echo -e "${RED}回写中枢编译失败${NC}"; exit 1; }
 echo -e "${GREEN}核心微服务编译完毕，准备入列。${NC}"
 
 # 7. 点火全套微服务后台

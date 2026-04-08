@@ -5,6 +5,7 @@ go 1.24.0
 require github.com/hyperledger/fabric-sdk-go v1.0.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Knetic/govaluate v3.0.0+incompatible // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cloudflare/cfssl v1.4.1 // indirect

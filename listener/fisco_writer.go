@@ -1,3 +1,5 @@
+// listener/fisco_writer.go
+// 使用 config.toml 配置
 package main
 
 import (
@@ -9,22 +11,20 @@ import (
 	"os/exec"
 )
 
-const ContractAddr = "0x0f3c7ca4308c17c6479d59c93d4095bb7032c781"
-const ContractName = "CrossDomainAuth"
-
 type OracleResponse struct {
 	ReqId        string `json:"reqId"`
-	IsAuthorized bool   `json:"isAuthorized"` 
-	ResponseHash string `json:"responseHash"` 
+	IsAuthorized bool   `json:"isAuthorized"`
+	ResponseHash string `json:"responseHash"`
 }
 
 func executeConsoleCmd(method string, args ...string) (string, error) {
-	cmdArgs := []string{"console.sh", "call", ContractName, ContractAddr, method}
+	cmdArgs := []string{"console.sh", "call",
+		Cfg.Fisco.ContractName, Cfg.Fisco.ContractAddr, method}
 	for _, arg := range args {
 		cmdArgs = append(cmdArgs, fmt.Sprintf("\"%s\"", arg))
 	}
 	cmd := exec.Command("bash", cmdArgs...)
-	cmd.Dir = "/home/fan/console"
+	cmd.Dir = Cfg.Fisco.ConsoleDir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -32,9 +32,7 @@ func executeConsoleCmd(method string, args ...string) (string, error) {
 func writeBackHandler(w http.ResponseWriter, r *http.Request) {
 	body, _ := ioutil.ReadAll(r.Body)
 	var resp OracleResponse
-
 	if err := json.Unmarshal(body, &resp); err != nil {
-		fmt.Printf("[Error] Parse payload failed: %v\n", err)
 		http.Error(w, "Invalid payload", http.StatusBadRequest)
 		return
 	}
@@ -44,22 +42,23 @@ func writeBackHandler(w http.ResponseWriter, r *http.Request) {
 		authStr = "true"
 	}
 
-	fmt.Printf("\n[Writer] Executing Phase 2: ReqID=%s, Auth=%s\n", resp.ReqId, authStr)
-
+	fmt.Printf("\n[Writer] 执行回写: ReqID=%s, Auth=%s\n", resp.ReqId, authStr)
 	out, err := executeConsoleCmd("fulfillAuth", resp.ReqId, authStr, resp.ResponseHash)
-	
 	if err != nil {
-		fmt.Printf("[Writer Failed]: %v\nReceipt: %s\n", err, string(out))
-		http.Error(w, string(out), http.StatusInternalServerError)
+		fmt.Printf("[Writer] 回写失败: %v\n回执: %s\n", err, out)
+		http.Error(w, out, http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Printf("[Writer] Success! Data loop closed.\n")
+	fmt.Printf("[Writer] 回写成功！数据闭环完成。\n")
 	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
-	fmt.Println("[WriteBack] FISCO Writer started on port 8082")
+	if err := LoadConfig(); err != nil {
+		log.Fatalf("[Writer] 配置加载失败: %v", err)
+	}
+	fmt.Printf("[WriteBack] FISCO Writer 启动，监听 %s\n", Cfg.Ports.FiscoWriter)
 	http.HandleFunc("/", writeBackHandler)
-	log.Fatal(http.ListenAndServe(":8082", nil))
+	log.Fatal(http.ListenAndServe(Cfg.Ports.FiscoWriter, nil))
 }

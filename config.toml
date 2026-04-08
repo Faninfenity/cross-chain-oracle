@@ -1,0 +1,49 @@
+# ╔══════════════════════════════════════════════════════╗
+# ║         Cross-Chain Oracle 系统配置文件              ║
+# ║  修改此文件后重启服务生效，无需重新编译               ║
+# ╚══════════════════════════════════════════════════════╝
+
+# ── Hyperledger Fabric 配置 ──────────────────────────────
+[fabric]
+# Fabric samples 根目录
+base_path    = "/home/fan/fabric-project/fabric-samples"
+# 目标 Channel 名称
+channel      = "mychannel"
+# 链码名称
+chaincode    = "pki"
+# Peer 节点地址
+peer_address = "localhost:7051"
+# 存证/吊销脚本所在目录（test-network 目录）
+cli_path     = "/home/fan/fabric-project/fabric-samples/test-network"
+
+# ── FISCO BCOS 配置 ──────────────────────────────────────
+[fisco]
+# 控制台目录（console.sh 所在位置）
+console_dir   = "/home/fan/console"
+# 已部署合约地址
+contract_addr = "0x0f3c7ca4308c17c6479d59c93d4095bb7032c781"
+# 合约名称
+contract_name = "CrossDomainAuth"
+
+# ── Chainlink 预言机配置 ─────────────────────────────────
+[chainlink]
+# Chainlink 节点地址
+node_url    = "http://localhost:6688"
+# Webhook Job ID（External Job ID）
+job_id      = "2d5857b0-1f73-4a90-a33b-247e749c0c4d"
+# 登录凭证
+email       = "admin@crosschain.local"
+password    = "Admin@Chainlink2026"
+
+# ── IPFS 配置 ────────────────────────────────────────────
+[ipfs]
+# IPFS API 地址
+api_url = "http://localhost:5001"
+
+# ── 各微服务监听端口 ─────────────────────────────────────
+[ports]
+fabric_adapter = ":8081"
+fisco_writer   = ":8082"
+auto_trigger   = ":8083"
+verifier_ui    = ":8888"
+issuer_ui      = ":8889"

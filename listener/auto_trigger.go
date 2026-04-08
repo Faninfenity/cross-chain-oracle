@@ -1,3 +1,5 @@
+// listener/auto_trigger.go
+// 使用 config.toml 配置
 package main
 
 import (
@@ -10,9 +12,6 @@ import (
 	"time"
 )
 
-// 已经替换为你真实的 External Job ID
-const WebhookURL = "http://localhost:6688/v2/jobs/2d5857b0-1f73-4a90-a33b-247e749c0c4d/runs"
-
 type EventPayload struct {
 	ReqId       string `json:"reqId"`
 	Fingerprint string `json:"fingerprint"`
@@ -23,73 +22,64 @@ func eventHandler(w http.ResponseWriter, r *http.Request) {
 	var payload EventPayload
 	json.Unmarshal(body, &payload)
 
-	fmt.Printf("\n[Listener] Application-level event intercepted!\n")
-	fmt.Printf(" -> ReqID: %s\n", payload.ReqId)
-	fmt.Printf(" -> Fingerprint: %s\n", payload.Fingerprint)
+	fmt.Printf("\n[Listener] 事件捕获!\n -> ReqID: %s\n -> Fingerprint: %s\n",
+		payload.ReqId, payload.Fingerprint)
 
 	triggerChainlinkWebhook(payload.ReqId, payload.Fingerprint)
 	w.WriteHeader(http.StatusOK)
 }
 
 func triggerChainlinkWebhook(reqId string, fingerprint string) {
-	fmt.Printf("[Oracle] Authenticating with REAL Chainlink Node...\n")
+	fmt.Println("[Oracle] 正在向 Chainlink 节点鉴权...")
 
-	// 1. 自动登录 Chainlink 获取鉴权 Cookie
-	loginURL := "http://localhost:6688/sessions"
 	loginData := map[string]string{
-		"email":    "admin@crosschain.local",
-		"password": "Admin@Chainlink2026",
+		"email":    Cfg.Chainlink.Email,
+		"password": Cfg.Chainlink.Password,
 	}
 	loginBytes, _ := json.Marshal(loginData)
-
-	loginReq, _ := http.NewRequest("POST", loginURL, bytes.NewBuffer(loginBytes))
+	loginReq, _ := http.NewRequest("POST", Cfg.Chainlink.SessionURL(), bytes.NewBuffer(loginBytes))
 	loginReq.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	loginResp, err := client.Do(loginReq)
-	if err != nil {
-		log.Printf("[Error] Failed to connect to Chainlink: %v\n", err)
+	if err != nil || loginResp.StatusCode != 200 {
+		log.Printf("[Error] Chainlink 登录失败: %v\n", err)
 		return
 	}
 	defer loginResp.Body.Close()
-
-	if loginResp.StatusCode != 200 {
-		log.Printf("[Error] Chainlink login failed, status: %d\n", loginResp.StatusCode)
-		return
-	}
 
 	var sessionCookie string
 	for _, cookie := range loginResp.Cookies() {
 		sessionCookie += cookie.Name + "=" + cookie.Value + ";"
 	}
-	fmt.Printf("[Oracle] Auth successful! Session Cookie acquired.\n")
+	fmt.Println("[Oracle] 鉴权成功，Cookie 已获取")
 
-	// 2. 携带令牌，真正唤醒 Webhook 跨链任务
 	payloadData := map[string]string{
 		"reqId":    reqId,
 		"certHash": fingerprint,
 	}
 	payloadBytes, _ := json.Marshal(payloadData)
 
-	req, _ := http.NewRequest("POST", WebhookURL, bytes.NewBuffer(payloadBytes))
+	req, _ := http.NewRequest("POST", Cfg.Chainlink.WebhookURL(), bytes.NewBuffer(payloadBytes))
 	req.Header.Set("Content-Type", "application/json")
-	// 注入登录凭证
 	req.Header.Set("Cookie", sessionCookie)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("[Error] Failed to trigger Webhook: %v\n", err)
+		log.Printf("[Error] Webhook 触发失败: %v\n", err)
 		return
 	}
 	defer resp.Body.Close()
-
-	fmt.Printf("[Oracle] Real Chainlink request sent! HTTP Status: %d\n", resp.StatusCode)
+	fmt.Printf("[Oracle] Chainlink 请求已发送，HTTP Status: %d\n", resp.StatusCode)
 }
 
 func main() {
+	if err := LoadConfig(); err != nil {
+		log.Fatalf("[Trigger] 配置加载失败: %v", err)
+	}
 	fmt.Println("--------------------------------------------------")
-	fmt.Println("[Listener] True Cross-Chain Event Bus started on :8083")
+	fmt.Printf("[Listener] 跨链事件总线启动，监听 %s\n", Cfg.Ports.AutoTrigger)
 	fmt.Println("--------------------------------------------------")
 	http.HandleFunc("/event", eventHandler)
-	log.Fatal(http.ListenAndServe(":8083", nil))
+	log.Fatal(http.ListenAndServe(Cfg.Ports.AutoTrigger, nil))
 }
