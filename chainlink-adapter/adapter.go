@@ -17,7 +17,7 @@ type Certificate struct {
 	CertID    string `json:"certID"`
 	Status    string `json:"status"`
 	IPFSHash  string `json:"ipfsHash"`
-	Owner     string `json:"owner"`
+	IssuerDID string `json:"issuerDID"`
 	IssuedAt  string `json:"issuedAt"`
 	RevokedAt string `json:"revokedAt"`
 }

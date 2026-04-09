@@ -28,7 +28,7 @@ func executeConsoleCmd(method string, args ...string) (string, error) {
 
 type CertRecord struct {
 	CertID    string `json:"certID"`
-	Owner     string `json:"owner"`
+	IssuerDID string `json:"issuerDID"`
 	IPFSHash  string `json:"ipfsHash"`
 	Status    string `json:"status"`
 	IssuedAt  string `json:"issuedAt"`
@@ -383,7 +383,7 @@ function showResult(status, cert, cid) {
     title.textContent = '核验通过';
     desc.textContent = '该证书已在 Hyperledger Fabric 权威账本中完成确权，内容完整性验证通过。';
     meta.innerHTML =
-      '<div class="meta-item">颁发机构<span>' + (cert.owner||'—') + '</span></div>' +
+      '<div class="meta-item">颁发机构<span>' + (cert.issuerDID||'—') + '</span></div>' +
       '<div class="meta-item">存证时间<span>' + formatTime(cert.issuedAt) + '</span></div>' +
       '<div class="meta-item">链上状态<span style="color:#1a7f3c">VALID</span></div>';
   } else if (status === 'REVOKED') {
@@ -392,7 +392,7 @@ function showResult(status, cert, cid) {
     title.textContent = '证书已吊销';
     desc.textContent = '该证书已被颁发机构正式吊销，不再具有法律效力，请勿信任该凭证。';
     meta.innerHTML =
-      '<div class="meta-item">颁发机构<span>' + (cert.owner||'—') + '</span></div>' +
+      '<div class="meta-item">颁发机构<span>' + (cert.issuerDID||'—') + '</span></div>' +
       '<div class="meta-item">吊销时间<span style="color:#b25c00">' + formatTime(cert.revokedAt) + '</span></div>' +
       '<div class="meta-item">链上状态<span style="color:#b25c00">REVOKED</span></div>';
   } else {
@@ -408,7 +408,7 @@ function showResult(status, cert, cid) {
     const statusCls = cert.status === 'VALID' ? 'green' : 'orange';
     document.getElementById('detailGrid').innerHTML =
       '<div class="detail-row"><div class="detail-label">证书 CID</div><div class="detail-val">' + cert.certID + '</div></div>' +
-      '<div class="detail-row"><div class="detail-label">颁发机构</div><div class="detail-val">' + cert.owner + '</div></div>' +
+      '<div class="detail-row"><div class="detail-label">颁发机构</div><div class="detail-val">' + cert.issuerDID + '</div></div>' +
       '<div class="detail-row"><div class="detail-label">链上状态</div><div class="detail-val ' + statusCls + '">' + cert.status + '</div></div>' +
       '<div class="detail-row"><div class="detail-label">IPFS 哈希</div><div class="detail-val">' + cert.ipfsHash + '</div></div>' +
       '<div class="detail-row"><div class="detail-label">存证时间</div><div class="detail-val">' + (cert.issuedAt||'—') + '</div></div>' +

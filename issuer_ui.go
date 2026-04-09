@@ -21,7 +21,7 @@ func issueToFabricHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "缺少指纹参数", http.StatusBadRequest)
 		return
 	}
-	cmd := exec.Command("bash", "issue.sh", certHash)
+	cmd := exec.Command("bash", "issue.sh", certHash, "org1", "LaoFan_University")
 	cmd.Dir = Cfg.Fabric.CliPath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -113,7 +113,7 @@ func checkStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 type CertRecord struct {
 	CertID    string `json:"certID"`
-	Owner     string `json:"owner"`
+	IssuerDID string `json:"issuerDID"`
 	IPFSHash  string `json:"ipfsHash"`
 	Status    string `json:"status"`
 	IssuedAt  string `json:"issuedAt"`
@@ -517,7 +517,7 @@ function renderTable(certs) {
       : '';
     return '<tr>' +
       '<td class="td-cid" title="' + c.certID + '">' + shortCID + '</td>' +
-      '<td style="font-size:13px">' + c.owner + '</td>' +
+      '<td style="font-size:13px">' + c.issuerDID + '</td>' +
       '<td>' + badge + '</td>' +
       '<td class="td-time">' + formatTime(c.issuedAt) + '</td>' +
       '<td><div class="td-actions">' + actions + '</div></td>' +
