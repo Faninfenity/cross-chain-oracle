@@ -98,7 +98,7 @@ compile() {
 compile "issuer_ui"      "$PROJECT_DIR"                  "issuer_ui.go config.go"
 compile "verifier_ui"    "$PROJECT_DIR"                  "verifier_ui.go config.go"
 compile "fabric_adapter" "$PROJECT_DIR/chainlink-adapter" "adapter.go config.go"
-compile "auto_trigger"   "$PROJECT_DIR/listener"          "auto_trigger.go config.go"
+compile "auto_trigger"   "$PROJECT_DIR/listener"          "auto_trigger.go voting_listener.go config.go"
 compile "fisco_writer"   "$PROJECT_DIR/listener"          "fisco_writer.go config.go"
 
 # ── 7. 启动微服务 ──────────────────────────────────────────

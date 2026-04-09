@@ -66,6 +66,37 @@ func queryFabricLedger(targetHash string) (CertStatus, string) {
 	}
 }
 
+func triggerReputationDeduct(certHash string) {
+	// 查询证书的 IssuerDID，然后对该 CA 扣分
+	args := fmt.Sprintf(`{"Args":["QueryCert", "%s"]}`, certHash)
+	cmd := exec.Command(Cfg.Fabric.PeerBin(), "chaincode", "query",
+		"-C", Cfg.Fabric.Channel,
+		"-n", Cfg.Fabric.Chaincode,
+		"-c", args)
+	cmd.Env = append(os.Environ(), Cfg.Fabric.FabricEnv()...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return
+	}
+	var cert Certificate
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(output))), &cert); err != nil {
+		return
+	}
+	if cert.IssuerDID == "" || Cfg.Fisco.ReputationAddr == "" {
+		return
+	}
+	fmt.Printf("[Reputation] 证书已吊销，对 CA %s 扣分\n", cert.IssuerDID)
+	deductCmd := exec.Command("bash", "console.sh", "call", "CAReputation",
+		Cfg.Fisco.ReputationAddr, "onCertRevoked", cert.IssuerDID)
+	deductCmd.Dir = Cfg.Fisco.ConsoleDir
+	out, err := deductCmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("[Reputation] 扣分失败: %v\n", err)
+		return
+	}
+	fmt.Printf("[Reputation] 扣分成功: %s\n", string(out))
+}
+
 func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, _ := io.ReadAll(r.Body)
 	fmt.Printf("\n[X-Ray] 收到载荷: %s\n", string(bodyBytes))
@@ -85,6 +116,8 @@ func handleChainlinkRequest(w http.ResponseWriter, r *http.Request) {
 		isValid, responseHash, statusStr = true, "Fabric-Status-VALID", "有效 (权威确权)"
 	case StatusRevoked:
 		isValid, responseHash, statusStr = false, "Fabric-Status-REVOKED", "已吊销"
+		// 自动触发 CA 信誉扣分
+		go triggerReputationDeduct(hash)
 	default:
 		isValid, responseHash, statusStr = false, "Fabric-Status-NOTFOUND", "无效 (未注册或伪造)"
 	}

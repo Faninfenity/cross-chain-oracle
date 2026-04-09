@@ -28,7 +28,8 @@ type FabricConfig struct {
 
 type FiscoConfig struct {
 	ConsoleDir   string `toml:"console_dir"`
-	ContractAddr string `toml:"contract_addr"`
+	ContractAddr    string `toml:"contract_addr"`
+	ReputationAddr string `toml:"reputation_addr"`
 	ContractName string `toml:"contract_name"`
 }
 

@@ -24,6 +24,8 @@ console_dir   = "/home/fan/console"
 contract_addr = "0x0f3c7ca4308c17c6479d59c93d4095bb7032c781"
 # 合约名称
 contract_name = "CrossDomainAuth"
+reputation_addr = "0x0a1b7fadcece391ac1e960d150b8e1ffc06ae162"
+voting_addr    = "0xb59e0050ac3449d8a9f7a40670ed86da7d89d5ac"
 
 # ── Chainlink 预言机配置 ─────────────────────────────────
 [chainlink]
@@ -47,3 +49,4 @@ fisco_writer   = ":8082"
 auto_trigger   = ":8083"
 verifier_ui    = ":8888"
 issuer_ui      = ":8889"
+

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"regexp"
 )
 
 // ── FISCO 控制台调用 ──────────────────────────────────────
@@ -65,6 +66,41 @@ func queryFabricDirect(certHash string) (string, *CertRecord) {
 	default:
 		return "NOTFOUND", nil
 	}
+}
+
+// ── CA 信誉分查询 ────────────────────────────────────
+type CAInfo struct {
+	Score  int    `json:"score"`
+	Status string `json:"status"`
+}
+
+func queryCAReputation(issuerDID string) *CAInfo {
+	if issuerDID == "" || Cfg.Fisco.ReputationAddr == "" {
+		return nil
+	}
+	cmd := exec.Command("bash", "console.sh", "call", "CAReputation",
+		Cfg.Fisco.ReputationAddr, "getCAInfo", issuerDID)
+	cmd.Dir = Cfg.Fisco.ConsoleDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil
+	}
+	outStr := string(out)
+	// 解析 Return values:(score, ..., status, ...)
+	scoreRe := regexp.MustCompile(`Return values:\(([-0-9]+),`)
+	statusRe := regexp.MustCompile(`,\s*(TRUSTED|WARNING|BLOCKED),`)
+	scoreMatch := scoreRe.FindStringSubmatch(outStr)
+	statusMatch := statusRe.FindStringSubmatch(outStr)
+	if len(scoreMatch) < 2 {
+		return nil
+	}
+	score := 100
+	fmt.Sscanf(scoreMatch[1], "%d", &score)
+	status := "TRUSTED"
+	if len(statusMatch) >= 2 {
+		status = statusMatch[1]
+	}
+	return &CAInfo{Score: score, Status: status}
 }
 
 // ── HTTP 处理器 ───────────────────────────────────────────
@@ -137,14 +173,32 @@ func fabricQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	status, cert := queryFabricDirect(cid)
 	w.Header().Set("Content-Type", "application/json")
+
+	// 同时查 CA 信誉分
+	var caInfo *CAInfo
+	if cert != nil && cert.IssuerDID != "" {
+		caInfo = queryCAReputation(cert.IssuerDID)
+	}
+
+	// 综合判定
+	finalStatus := status
+	if status == "VALID" && caInfo != nil {
+		if caInfo.Status == "BLOCKED" {
+			finalStatus = "CA_BLOCKED"
+		} else if caInfo.Status == "WARNING" {
+			finalStatus = "CA_WARNING"
+		}
+	}
+
 	if cert != nil {
 		data, _ := json.Marshal(map[string]interface{}{
-			"status": status,
+			"status": finalStatus,
 			"cert":   cert,
+			"ca":     caInfo,
 		})
 		w.Write(data)
 	} else {
-		fmt.Fprintf(w, `{"status":"%s","cert":null}`, status)
+		fmt.Fprintf(w, `{"status":"%s","cert":null,"ca":null}`, finalStatus)
 	}
 }
 
@@ -210,11 +264,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',He
 .result-card.revoked{background:#fff8ec;border:1px solid #ffd19a}
 .result-card.invalid{background:#fff0f0;border:1px solid #ffb8b8}
 .result-card.loading{background:#f5f5f7;border:1px solid #e5e5ea}
+.result-card.ca-warning{background:#fff8ec;border:1px solid #ffd19a}
+.result-card.ca-blocked{background:#fff0f0;border:1px solid #ffb8b8}
 .result-icon{width:52px;height:52px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .result-card.valid .result-icon{background:#30d158}
 .result-card.revoked .result-icon{background:#ff9f0a}
 .result-card.invalid .result-icon{background:#ff3b30}
 .result-card.loading .result-icon{background:#c7c7cc}
+.result-card.ca-warning .result-icon{background:#ff9f0a}
+.result-card.ca-blocked .result-icon{background:#ff3b30}
 .result-icon svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
 .result-body{flex:1}
 .result-title{font-size:18px;font-weight:600;letter-spacing:-.3px;margin-bottom:4px}
@@ -222,6 +280,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',He
 .result-card.revoked .result-title{color:#b25c00}
 .result-card.invalid .result-title{color:#c93030}
 .result-card.loading .result-title{color:#86868b}
+.result-card.ca-warning .result-title{color:#b25c00}
+.result-card.ca-blocked .result-title{color:#c93030}
 .result-desc{font-size:13px;color:#86868b;line-height:1.5;margin-bottom:10px}
 .result-meta{display:flex;flex-wrap:wrap;gap:16px}
 .meta-item{font-size:12px;color:#86868b}
@@ -370,14 +430,32 @@ function showLoading() {
   document.getElementById('detailCard').style.display = 'none';
 }
 
-function showResult(status, cert, cid) {
+function showResult(status, cert, cid, ca) {
   const card = document.getElementById('resultCard');
   const iconSvg = document.getElementById('resultIconSvg');
   const title = document.getElementById('resultTitle');
   const desc = document.getElementById('resultDesc');
   const meta = document.getElementById('resultMeta');
 
-  if (status === 'VALID') {
+  if (status === 'CA_BLOCKED') {
+    card.className = 'result-card ca-blocked';
+    iconSvg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
+    title.textContent = '核验拒绝（CA 不可信）';
+    desc.textContent = '证书本身存在，但颁发机构信誉分过低（已被封禁），系统拒绝信任该证书。';
+    meta.innerHTML =
+      '<div class="meta-item">颁发机构<span>' + (cert ? cert.issuerDID : '—') + '</span></div>' +
+      '<div class="meta-item">CA 信誉分<span style="color:#c93030">' + (ca ? ca.score : '—') + '</span></div>' +
+      '<div class="meta-item">CA 状态<span style="color:#c93030">BLOCKED</span></div>';
+  } else if (status === 'CA_WARNING') {
+    card.className = 'result-card ca-warning';
+    iconSvg.innerHTML = '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+    title.textContent = '谨慎信任（CA 信誉预警）';
+    desc.textContent = '证书有效，但颁发机构信誉分偏低，建议谨慎使用该证书。';
+    meta.innerHTML =
+      '<div class="meta-item">颁发机构<span>' + (cert ? cert.issuerDID.slice(0,20) + '...' : '—') + '</span></div>' +
+      '<div class="meta-item">CA 信誉分<span style="color:#b25c00">' + (ca ? ca.score : '—') + '</span></div>' +
+      '<div class="meta-item">CA 状态<span style="color:#b25c00">WARNING</span></div>';
+  } else if (status === 'VALID') {
     card.className = 'result-card valid';
     iconSvg.innerHTML = '<polyline points="20 6 9 17 4 12"/>';
     title.textContent = '核验通过';
@@ -385,7 +463,8 @@ function showResult(status, cert, cid) {
     meta.innerHTML =
       '<div class="meta-item">颁发机构<span>' + (cert.issuerDID||'—') + '</span></div>' +
       '<div class="meta-item">存证时间<span>' + formatTime(cert.issuedAt) + '</span></div>' +
-      '<div class="meta-item">链上状态<span style="color:#1a7f3c">VALID</span></div>';
+      '<div class="meta-item">链上状态<span style="color:#1a7f3c">VALID</span></div>' +
+      (ca ? '<div class="meta-item">CA 信誉分<span style="color:#1a7f3c">' + ca.score + '</span></div>' : '');
   } else if (status === 'REVOKED') {
     card.className = 'result-card revoked';
     iconSvg.innerHTML = '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
@@ -435,16 +514,21 @@ async function doVerify() {
 
     if (fabData.status === 'VALID') {
       tlog('Fabric 账本查询完成 → STATUS: VALID', 'ok');
-      showResult('VALID', fabData.cert, cid);
-      // 同时触发跨链全流程（异步，不阻塞显示）
+      showResult('VALID', fabData.cert, cid, fabData.ca);
       tlog('正在触发预言机跨链全流程...', 'info');
       fetch('/api/trigger?id=' + cid).then(r => r.json()).then(d => {
         if (d.status === 'OK') tlog('预言机跨链闭环完成', 'ok');
         else if (d.status === 'EXISTS') tlog('已有历史记录，跨链流程跳过', 'info');
       });
+    } else if (fabData.status === 'CA_WARNING') {
+      tlog('Fabric 账本查询完成 → CA 信誉预警（' + (fabData.ca ? fabData.ca.score : '?') + '分）', 'warn');
+      showResult('CA_WARNING', fabData.cert, cid, fabData.ca);
+    } else if (fabData.status === 'CA_BLOCKED') {
+      tlog('Fabric 账本查询完成 → CA 已封禁（' + (fabData.ca ? fabData.ca.score : '?') + '分）', 'err');
+      showResult('CA_BLOCKED', fabData.cert, cid, fabData.ca);
     } else if (fabData.status === 'REVOKED') {
       tlog('Fabric 账本查询完成 → STATUS: REVOKED', 'warn');
-      showResult('REVOKED', fabData.cert, cid);
+      showResult('REVOKED', fabData.cert, cid, fabData.ca);
     } else {
       tlog('Fabric 账本中未找到该 CID 记录', 'err');
       showResult('INVALID', null, cid);

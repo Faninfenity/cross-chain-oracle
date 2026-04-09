@@ -369,6 +369,7 @@ func main() {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	go startPolling()
+	go startGroup2Polling()
 
 	http.HandleFunc("/event", eventHandler)
 	log.Fatal(http.ListenAndServe(Cfg.Ports.AutoTrigger, nil))
