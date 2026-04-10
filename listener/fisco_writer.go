@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"time"
 )
 
 type OracleResponse struct {
@@ -42,7 +43,7 @@ func writeBackHandler(w http.ResponseWriter, r *http.Request) {
 		authStr = "true"
 	}
 
-	fmt.Printf("\n[Writer] 执行回写: ReqID=%s, Auth=%s\n", resp.ReqId, authStr)
+	fmt.Printf("\n[Writer] 收到回写请求: ReqID=%s, Auth=%s, 时间戳: %d ms\n", resp.ReqId, authStr, time.Now().UnixMilli())
 	out, err := executeConsoleCmd("fulfillAuth", resp.ReqId, authStr, resp.ResponseHash)
 	if err != nil {
 		fmt.Printf("[Writer] 回写失败: %v\n回执: %s\n", err, out)
@@ -50,7 +51,7 @@ func writeBackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("[Writer] 回写成功！数据闭环完成。\n")
+	fmt.Printf("[Writer] 回写成功！数据闭环完成。时间戳: %d ms\n", time.Now().UnixMilli())
 	w.WriteHeader(http.StatusOK)
 }
 

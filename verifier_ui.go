@@ -1,7 +1,12 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
@@ -31,9 +36,61 @@ type CertRecord struct {
 	CertID    string `json:"certID"`
 	IssuerDID string `json:"issuerDID"`
 	IPFSHash  string `json:"ipfsHash"`
+	Signature string `json:"signature"`
 	Status    string `json:"status"`
 	IssuedAt  string `json:"issuedAt"`
 	RevokedAt string `json:"revokedAt"`
+}
+
+func verifySignature(certHash string, signature string, issuerDID string) bool {
+	if signature == "" || issuerDID == "" {
+		return false
+	}
+	// 解析 DID 获取公钥
+	cmd := exec.Command(Cfg.Fabric.PeerBin(), "chaincode", "query",
+		"-C", Cfg.Fabric.Channel,
+		"-n", Cfg.Fabric.Chaincode,
+		"-c", fmt.Sprintf(`{"Args":["ResolveDID", "%s"]}`, issuerDID))
+	cmd.Env = append(os.Environ(), Cfg.Fabric.FabricEnv()...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		PublicKey string `json:"publicKey"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(output))), &doc); err != nil {
+		return false
+	}
+	if doc.PublicKey == "" {
+		return false
+	}
+	// 解码公钥 PEM
+	pubKeyPEM, err := base64.StdEncoding.DecodeString(doc.PublicKey)
+	if err != nil {
+		return false
+	}
+	block, _ := pem.Decode(pubKeyPEM)
+	if block == nil {
+		return false
+	}
+	pubKeyInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return false
+	}
+	ecPubKey, ok := pubKeyInterface.(*ecdsa.PublicKey)
+	if !ok {
+		return false
+	}
+	// 解码签名
+	sigBytes, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		return false
+	}
+	// 计算 CID 的 SHA256 哈希
+	hash := sha256.Sum256([]byte(certHash))
+	// 验证签名
+	return ecdsa.VerifyASN1(ecPubKey, hash[:], sigBytes)
 }
 
 func queryFabricDirect(certHash string) (string, *CertRecord) {
@@ -172,6 +229,12 @@ func fabricQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, cert := queryFabricDirect(cid)
+
+	// 验证数字签名
+	sigValid := false
+	if cert != nil && cert.Signature != "" {
+		sigValid = verifySignature(cid, cert.Signature, cert.IssuerDID)
+	}
 	w.Header().Set("Content-Type", "application/json")
 
 	// 同时查 CA 信誉分
@@ -192,9 +255,10 @@ func fabricQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	if cert != nil {
 		data, _ := json.Marshal(map[string]interface{}{
-			"status": finalStatus,
-			"cert":   cert,
-			"ca":     caInfo,
+			"status":   finalStatus,
+			"cert":     cert,
+			"ca":       caInfo,
+			"sigValid": sigValid,
 		})
 		w.Write(data)
 	} else {

@@ -316,7 +316,7 @@ func startPolling() {
 					}
 
 					fmt.Printf("\n[Poller] 区块 %d 捕获到 CrossDomainRequested 事件！\n", blockNum)
-					fmt.Printf("[Poller] TxHash: %s\n", tx.Hash)
+					fmt.Printf("[Poller] TxHash: %s, 捕获时间戳: %d ms\n", tx.Hash, time.Now().UnixMilli())
 
 					event := parseCrossDomainEvent(l.Data)
 					if event == nil || event.DataFingerprint == "" {
